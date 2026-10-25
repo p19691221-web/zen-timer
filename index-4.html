@@ -1,0 +1,360 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>禪修計時器</title>
+<meta name="theme-color" content="#1b1a17">
+<style>
+:root{
+  --bg:#f3efe6; --fg:#2b2925; --muted:#7a746a; --line:#d9d2c3; --card:#fbf8f2; --accent:#8a5a2b; --ring:#c9b79a;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){ --bg:#1b1a17; --fg:#e9e3d6; --muted:#9a9284; --line:#3a362f; --card:#24221e; --accent:#d1a36b; --ring:#4a443a; }
+}
+:root[data-theme="dark"]{ --bg:#1b1a17; --fg:#e9e3d6; --muted:#9a9284; --line:#3a362f; --card:#24221e; --accent:#d1a36b; --ring:#4a443a; }
+*{box-sizing:border-box}
+html,body{margin:0;background:var(--bg);color:var(--fg);font-family:"Noto Serif TC","Songti TC",serif;-webkit-tap-highlight-color:transparent}
+main{max-width:520px;margin:0 auto;padding:24px 16px 48px}
+h1{font-size:22px;font-weight:600;letter-spacing:4px;text-align:center;margin:8px 0 24px}
+.dial{position:relative;width:min(78vw,300px);aspect-ratio:1;margin:0 auto 12px}
+.dial svg{width:100%;height:100%;transform:rotate(-90deg)}
+.dial .center{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px}
+#seg-name{font-size:18px;color:var(--muted);letter-spacing:4px}
+#clock{font-size:56px;font-variant-numeric:tabular-nums;font-family:ui-monospace,Menlo,monospace;letter-spacing:1px}
+#seg-pos{font-size:13px;color:var(--muted)}
+.controls{display:flex;gap:12px;justify-content:center;margin:20px 0 28px}
+button{font:inherit;border:1px solid var(--line);background:var(--card);color:var(--fg);border-radius:999px;padding:12px 22px;font-size:16px;cursor:pointer}
+button.primary{background:var(--accent);border-color:var(--accent);color:var(--bg);min-width:120px}
+button:disabled{opacity:.4;cursor:default}
+button.small{padding:6px 12px;font-size:14px}
+section{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:16px;margin-bottom:16px}
+section h2{font-size:15px;font-weight:600;margin:0 0 12px;letter-spacing:2px;color:var(--muted)}
+.presets{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:12px}
+.row{display:flex;gap:8px;align-items:center;margin-bottom:8px}
+.row select,.row input{font:inherit;font-size:16px;padding:8px;border:1px solid var(--line);border-radius:8px;background:var(--bg);color:var(--fg)}
+.row select{flex:1;min-width:0}
+.row input{width:72px;text-align:right}
+.row .unit{color:var(--muted);font-size:14px}
+.row button{padding:6px 10px}
+.opt{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:6px 0;font-size:15px}
+.opt input[type=number]{width:64px;font:inherit;padding:6px;border:1px solid var(--line);border-radius:8px;background:var(--bg);color:var(--fg);text-align:right}
+.total{font-size:14px;color:var(--muted);margin-top:4px}
+.log-list{list-style:none;padding:0;margin:0;font-size:14px;max-height:240px;overflow:auto}
+.log-list li{display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px dashed var(--line)}
+.log-list li span:last-child{color:var(--muted)}
+.stats{display:flex;gap:16px;font-size:14px;color:var(--muted);margin-bottom:10px;flex-wrap:wrap}
+.stats b{color:var(--fg);font-weight:600}
+textarea{width:100%;font:inherit;font-size:15px;padding:8px;border:1px solid var(--line);border-radius:8px;background:var(--bg);color:var(--fg);min-height:60px}
+.hint{font-size:13px;color:var(--muted);line-height:1.6}
+.running section.setup{display:none}
+#note-box{display:none}
+#note-box.show{display:block}
+</style>
+</head>
+<body>
+<main id="app">
+  <h1>禪修計時器</h1>
+
+  <div class="dial">
+    <svg viewBox="0 0 100 100" aria-hidden="true">
+      <circle cx="50" cy="50" r="46" fill="none" stroke="var(--ring)" stroke-width="2"/>
+      <circle id="arc" cx="50" cy="50" r="46" fill="none" stroke="var(--accent)" stroke-width="2.5" stroke-linecap="round" stroke-dasharray="289.03" stroke-dashoffset="0"/>
+    </svg>
+    <div class="center">
+      <div id="seg-name">準備</div>
+      <div id="clock">00:00</div>
+      <div id="seg-pos"></div>
+    </div>
+  </div>
+
+  <div class="controls">
+    <button id="btn-start" class="primary">開始</button>
+    <button id="btn-stop" disabled>結束</button>
+  </div>
+
+  <section id="note-box">
+    <h2>這一座</h2>
+    <textarea id="note" placeholder="（可留白）當下的狀況、昏沉或散亂、身體感受……"></textarea>
+    <div class="row" style="margin-top:8px;justify-content:flex-end">
+      <button id="btn-save" class="small primary">記錄</button>
+      <button id="btn-skip" class="small">不記錄</button>
+    </div>
+  </section>
+
+  <section class="setup">
+    <h2>流程</h2>
+    <div class="presets">
+      <button class="small" data-preset="single">一支香 30 分</button>
+      <button class="small" data-preset="classic">坐 25・行 10・坐 25</button>
+      <button class="small" data-preset="short">晨坐 15 分</button>
+    </div>
+    <div id="segs"></div>
+    <button id="btn-add" class="small">＋ 加一段</button>
+    <div class="total" id="total"></div>
+  </section>
+
+  <section class="setup">
+    <h2>設定</h2>
+    <label class="opt">開始前準備（秒）<input type="number" id="prep" min="0" max="300" step="5" value="10"></label>
+    <label class="opt">開始與結束的磬聲次數<input type="number" id="strikes" min="1" max="5" value="3"></label>
+    <label class="opt">中途提示磬（每幾分鐘，0 為不響）<input type="number" id="interval" min="0" max="60" value="0"></label>
+    <label class="opt">音量<input type="range" id="vol" min="0" max="100" value="70" style="width:140px"></label>
+    <div class="row" style="margin-top:6px"><button id="btn-test" class="small">試聽磬聲</button></div>
+    <p class="hint">計時期間會盡量讓螢幕保持亮著。若手機自動鎖定，瀏覽器可能暫停計時與磬聲，建議接上電源並調低亮度。</p>
+  </section>
+
+  <section class="setup">
+    <h2>紀錄</h2>
+    <div class="stats" id="stats"></div>
+    <ul class="log-list" id="log"></ul>
+    <div class="row" style="margin-top:10px">
+      <button id="btn-export" class="small">匯出 CSV</button>
+      <button id="btn-clear" class="small">清除全部</button>
+    </div>
+    <p class="hint">紀錄只存在這台裝置的瀏覽器，不會上傳。清除瀏覽器資料或換手機就會消失，請定期匯出。</p>
+  </section>
+</main>
+
+<script>
+(() => {
+const $ = id => document.getElementById(id);
+const KINDS = ["坐禪","經行","止靜","休息"];
+const PRESETS = {
+  single:[["坐禪",30]],
+  classic:[["坐禪",25],["經行",10],["坐禪",25]],
+  short:[["坐禪",15]]
+};
+const store = {
+  get(k, d){ try{ const v = localStorage.getItem(k); return v ? JSON.parse(v) : d; }catch(e){ return d; } },
+  set(k, v){ try{ localStorage.setItem(k, JSON.stringify(v)); }catch(e){} }
+};
+
+let segs = store.get("zt_segs", PRESETS.classic.map(s=>s.slice()));
+const settings = store.get("zt_settings", {prep:10, strikes:3, interval:0, vol:70});
+let log = store.get("zt_log", []);
+
+$("prep").value = settings.prep; $("strikes").value = settings.strikes;
+$("interval").value = settings.interval; $("vol").value = settings.vol;
+
+/* ---------- 流程編輯 ---------- */
+function renderSegs(){
+  const box = $("segs"); box.innerHTML = "";
+  segs.forEach((s, i) => {
+    const row = document.createElement("div"); row.className = "row";
+    const sel = document.createElement("select");
+    KINDS.forEach(k => { const o = document.createElement("option"); o.textContent = k; o.selected = k === s[0]; sel.appendChild(o); });
+    sel.onchange = () => { segs[i][0] = sel.value; saveSegs(); };
+    const inp = document.createElement("input"); inp.type = "number"; inp.min = 1; inp.max = 240; inp.value = s[1];
+    inp.onchange = () => { segs[i][1] = Math.max(1, Math.min(240, parseInt(inp.value)||1)); inp.value = segs[i][1]; saveSegs(); };
+    const unit = document.createElement("span"); unit.className = "unit"; unit.textContent = "分";
+    const del = document.createElement("button"); del.textContent = "✕"; del.title = "刪除";
+    del.disabled = segs.length === 1;
+    del.onclick = () => { segs.splice(i,1); saveSegs(); renderSegs(); };
+    row.append(sel, inp, unit, del); box.appendChild(row);
+  });
+  updateTotal();
+}
+function saveSegs(){ store.set("zt_segs", segs); updateTotal(); }
+function updateTotal(){
+  const t = segs.reduce((a,s)=>a+s[1],0);
+  $("total").textContent = `共 ${segs.length} 段，${t} 分鐘`;
+  if (!running) showIdle();
+}
+$("btn-add").onclick = () => { segs.push(["坐禪",25]); saveSegs(); renderSegs(); };
+document.querySelectorAll("[data-preset]").forEach(b => b.onclick = () => {
+  segs = PRESETS[b.dataset.preset].map(s=>s.slice()); saveSegs(); renderSegs();
+});
+["prep","strikes","interval","vol"].forEach(id => $(id).onchange = () => {
+  settings[id] = parseInt($(id).value)||0; store.set("zt_settings", settings);
+});
+
+/* ---------- 磬聲（以合成音模擬，無需音檔） ---------- */
+let ctx = null;
+function audio(){
+  if (!ctx) ctx = new (window.AudioContext || window.webkitAudioContext)();
+  if (ctx.state === "suspended") ctx.resume();
+  return ctx;
+}
+function strike(when){
+  const c = audio(), t = when ?? c.currentTime;
+  const vol = (parseInt($("vol").value)||0) / 100;
+  const master = c.createGain(); master.gain.value = 0.35 * vol; master.connect(c.destination);
+  // 磬的泛音不成整數倍，帶來金屬感
+  [[528,1,7],[1243,0.5,4.5],[2190,0.28,2.8],[3402,0.14,1.6],[531.5,0.6,7]].forEach(([f,a,d]) => {
+    const o = c.createOscillator(), g = c.createGain();
+    o.type = "sine"; o.frequency.value = f;
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.exponentialRampToValueAtTime(a, t + 0.008);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + d);
+    o.connect(g); g.connect(master); o.start(t); o.stop(t + d + 0.1);
+  });
+}
+function strikes(n){
+  const c = audio(); const t0 = c.currentTime + 0.05;
+  // 漸快的三聲，最後一聲留長
+  const gaps = [0, 3.2, 5.6, 7.4, 8.8];
+  for (let i=0;i<n;i++) strike(t0 + gaps[i]);
+}
+$("btn-test").onclick = () => strike();
+
+/* ---------- 計時 ---------- */
+let running = false, paused = false;
+let plan = [], idx = 0, segEnd = 0, segDur = 0, pausedLeft = 0, nextChime = 0;
+let startedAt = null, sittingMs = 0, timer = null, wakeLock = null;
+
+function fmt(ms){
+  const s = Math.max(0, Math.ceil(ms/1000));
+  const h = Math.floor(s/3600), m = Math.floor(s%3600/60), x = s%60;
+  return (h ? h + ":" + String(m).padStart(2,"0") : String(m).padStart(2,"0")) + ":" + String(x).padStart(2,"0");
+}
+function setArc(frac){ $("arc").style.strokeDashoffset = (289.03 * (1 - frac)).toFixed(2); }
+function showIdle(){
+  $("seg-name").textContent = "準備";
+  $("clock").textContent = fmt(segs.reduce((a,s)=>a+s[1],0)*60000);
+  $("seg-pos").textContent = segs.map(s=>s[0]).join("・");
+  setArc(1);
+}
+
+async function keepAwake(){
+  try{ if ("wakeLock" in navigator) wakeLock = await navigator.wakeLock.request("screen"); }catch(e){}
+}
+document.addEventListener("visibilitychange", () => { if (running && document.visibilityState === "visible") keepAwake(); });
+
+function beginSeg(i, now){
+  idx = i; segDur = plan[i].ms; segEnd = now + segDur;
+  const iv = (parseInt($("interval").value)||0) * 60000;
+  nextChime = (iv && plan[i].kind !== "準備") ? now + iv : 0;
+}
+
+function start(){
+  audio();
+  const prep = Math.max(0, parseInt($("prep").value)||0) * 1000;
+  plan = [];
+  if (prep) plan.push({kind:"準備", ms:prep});
+  segs.forEach(s => plan.push({kind:s[0], ms:s[1]*60000}));
+  running = true; paused = false; sittingMs = 0; startedAt = null;
+  document.body.classList.add("running");
+  $("note-box").classList.remove("show");
+  $("btn-start").textContent = "暫停"; $("btn-stop").disabled = false;
+  const now = Date.now();
+  beginSeg(0, now);
+  if (!prep) { startedAt = new Date(); strikes(parseInt($("strikes").value)||3); }
+  keepAwake();
+  timer = setInterval(tick, 200); tick();
+}
+
+function tick(){
+  if (!running || paused) return;
+  const now = Date.now();
+  const cur = plan[idx];
+  if (nextChime && now >= nextChime && now < segEnd - 2000){
+    strike(); nextChime += (parseInt($("interval").value)||0) * 60000;
+  }
+  if (now >= segEnd){
+    if (cur.kind !== "準備") sittingMs += cur.ms;
+    if (idx + 1 >= plan.length){ finish(true); return; }
+    const overshoot = now - segEnd;
+    beginSeg(idx + 1, now - overshoot);
+    if (cur.kind === "準備"){ startedAt = new Date(); strikes(parseInt($("strikes").value)||3); }
+    else strike();
+  }
+  const left = segEnd - now;
+  $("seg-name").textContent = plan[idx].kind;
+  $("clock").textContent = fmt(left);
+  const realSegs = plan.filter(p=>p.kind!=="準備").length;
+  const realIdx = plan.slice(0, idx+1).filter(p=>p.kind!=="準備").length;
+  $("seg-pos").textContent = plan[idx].kind === "準備" ? "即將開始" : `第 ${realIdx} / ${realSegs} 段`;
+  setArc(left / segDur);
+}
+
+function togglePause(){
+  if (!running) return start();
+  const now = Date.now();
+  if (!paused){
+    paused = true; pausedLeft = segEnd - now;
+    $("btn-start").textContent = "繼續"; $("seg-pos").textContent = "暫停中";
+  } else {
+    paused = false; const shift = (now + pausedLeft) - segEnd;
+    segEnd += shift; if (nextChime) nextChime += shift;
+    $("btn-start").textContent = "暫停"; tick();
+  }
+}
+
+function finish(complete){
+  const now = Date.now();
+  const cur = plan[idx];
+  if (!complete && cur && cur.kind !== "準備"){
+    const left = paused ? pausedLeft : (segEnd - now);
+    sittingMs += Math.max(0, cur.ms - left);
+  }
+  clearInterval(timer); running = false; paused = false;
+  try{ wakeLock && wakeLock.release(); }catch(e){} wakeLock = null;
+  document.body.classList.remove("running");
+  $("btn-start").textContent = "開始"; $("btn-stop").disabled = true;
+  if (complete) strikes(parseInt($("strikes").value)||3);
+  if (startedAt && sittingMs >= 60000){
+    pending = { date: startedAt.toISOString(), minutes: Math.round(sittingMs/60000),
+      plan: segs.map(s=>s[0]+s[1]).join("/"), complete };
+    $("seg-name").textContent = complete ? "圓滿" : "已結束";
+    $("clock").textContent = pending.minutes + " 分";
+    $("seg-pos").textContent = complete ? "" : "提前結束";
+    setArc(complete ? 0 : 1);
+    $("note").value = ""; $("note-box").classList.add("show");
+  } else { showIdle(); }
+}
+let pending = null;
+
+$("btn-start").onclick = togglePause;
+$("btn-stop").onclick = () => { if (running && confirm("提前結束這一座？")) finish(false); };
+$("btn-save").onclick = () => {
+  if (pending){ pending.note = $("note").value.trim(); log.unshift(pending); store.set("zt_log", log); }
+  pending = null; $("note-box").classList.remove("show"); renderLog(); showIdle();
+};
+$("btn-skip").onclick = () => { pending = null; $("note-box").classList.remove("show"); showIdle(); };
+
+/* ---------- 紀錄 ---------- */
+function dayKey(d){ const x = new Date(d); return x.getFullYear()+"-"+String(x.getMonth()+1).padStart(2,"0")+"-"+String(x.getDate()).padStart(2,"0"); }
+function renderLog(){
+  const ul = $("log"); ul.innerHTML = "";
+  log.slice(0, 60).forEach(r => {
+    const li = document.createElement("li");
+    const d = new Date(r.date);
+    const a = document.createElement("span");
+    a.textContent = `${d.getMonth()+1}/${d.getDate()} ${String(d.getHours()).padStart(2,"0")}:${String(d.getMinutes()).padStart(2,"0")}　${r.minutes} 分${r.complete?"":"（提前）"}`;
+    const b = document.createElement("span"); b.textContent = r.note ? r.note.slice(0,14) + (r.note.length>14?"…":"") : "";
+    li.append(a,b); ul.appendChild(li);
+  });
+  // 統計：總次數、本週分鐘、連續天數
+  const days = new Set(log.map(r=>dayKey(r.date)));
+  let streak = 0; const d = new Date();
+  if (!days.has(dayKey(d))) d.setDate(d.getDate()-1);
+  while (days.has(dayKey(d))){ streak++; d.setDate(d.getDate()-1); }
+  const weekAgo = Date.now() - 7*86400000;
+  const week = log.filter(r=>new Date(r.date).getTime() >= weekAgo).reduce((a,r)=>a+r.minutes,0);
+  $("stats").innerHTML = "";
+  [["共",log.length,"座"],["近七日",week,"分"],["連續",streak,"天"]].forEach(([l,v,u]) => {
+    const s = document.createElement("span"); s.append(l+" "); const b = document.createElement("b"); b.textContent = v; s.append(b, " "+u);
+    $("stats").appendChild(s);
+  });
+  if (!log.length){ const li = document.createElement("li"); li.innerHTML = "<span>尚無紀錄</span>"; ul.appendChild(li); }
+}
+$("btn-export").onclick = () => {
+  const esc = v => '"' + String(v ?? "").replace(/"/g,'""') + '"';
+  const rows = [["日期時間","分鐘","流程","完成","筆記"]].concat(
+    log.map(r => [new Date(r.date).toLocaleString("zh-TW",{hour12:false}), r.minutes, r.plan, r.complete?"是":"否", r.note||""]));
+  const csv = "﻿" + rows.map(r=>r.map(esc).join(",")).join("\n");
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(new Blob([csv],{type:"text/csv"}));
+  a.download = "禪修紀錄-" + dayKey(new Date()) + ".csv"; a.click();
+  setTimeout(()=>URL.revokeObjectURL(a.href), 1000);
+};
+$("btn-clear").onclick = () => {
+  if (log.length && confirm("清除全部紀錄？建議先匯出。")){ log = []; store.set("zt_log", log); renderLog(); }
+};
+
+renderSegs(); renderLog(); showIdle();
+})();
+</script>
+</body>
+</html>
